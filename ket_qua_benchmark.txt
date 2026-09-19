@@ -1,0 +1,187 @@
+=====================================================================================
+   BÁO CÁO KẾT QUẢ BENCHMARK & PHÂN TÍCH LỖI TRUY XUẤT (CHECKPOINT 6 - 3:25)
+=====================================================================================
+Sinh viên       : Lê Minh Hiếu (MSSV: 02848)
+Nhóm            : L3A
+Thời gian chạy  : 2026-09-19
+Corpus          : data/tra-cuu-dao-tao-dich-vu (5 tài liệu)
+Embedding Backend: MockEmbedder (MD5 hash 64-dim, fallback)
+  [*] LƯU Ý KỸ THUẬT: MockEmbedder băm MD5 chuỗi ký tự không mã hoá ngữ nghĩa.
+      Mọi số liệu cosine score mang tính chất xác định nhưng không phản ánh semantic similarity.
+      Do đó trọng tâm phân tích tập trung vào: số lượng chunk, độ dài trung bình, độ mạch lạc,
+      sự chênh lệch giữa chấm ngây thơ (Naive doc_id) và chấm nội dung (Strict content),
+      và thực nghiệm A/B Metadata Filter.
+-------------------------------------------------------------------------------------
+
+[PHẦN 1] THỐNG KÊ CHIẾN LƯỢC CHUNKING TRÊN TẬP TÀI LIỆU
+Chiến lược      | Tổng chunks  | Độ dài TB (chars)  | Độ mạch lạc ngữ nghĩa
+-------------------------------------------------------------------------------------
+FixedSize       | 40           | 472.8              | Kém: Cắt ngang ranh giới câu/bước do cố định độ dài
+Sentence        | 58           | 280.7              | Trung bình: Câu nguyên vẹn nhưng tách rời heading khỏi body
+Recursive       | 38           | 427.6              | Tốt: Giữ trọn cấu trúc đoạn văn, thụt lùi dấu câu linh hoạt
+Heading         | 54           | 314.8              | Rất tốt: Mỗi bước/section là 1 chunk; chunk con giữ lại heading
+
+=====================================================================================
+[PHẦN 2] SO SÁNH CHẤM HAI MỨC (TWO-LEVEL SCORING) TRÊN 5 CÂU HỎI BENCHMARK
+  - Mức 1 (Naive): 2đ nếu gold doc ở top-1, 1đ nếu gold doc ở top-2/3, 0đ nếu vắng mặt.
+  - Mức 2 (Strict): 2đ nếu gold doc ở top-1 VÀ ngữ cảnh chứa đáp án (chuỗi đặc trưng),
+                    1đ nếu gold doc ở top-2/3 VÀ chứa đáp án, 0đ nếu vắng hoặc không chứa đáp án.
+-------------------------------------------------------------------------------------
+
+>>> CHIẾN LƯỢC: FixedSize
+Câu  | Target Doc                 | Naive    | Strict   | Top-1 Chunk ID             | Match Content?
+-------------------------------------------------------------------------------------
+Q1   | huong-dan-tra-phong-ktx    | 0        | 0        | dang-ky-ktx-tan-sinh-vien#20 | Không
+Q2   | dang-ky-ktx-tan-sinh-vien  | 0        | 0        | dang-ky-hoat-dong-noi-tru#3 | Không
+Q3   | huong-dan-tra-phong-ktx    | 1        | 0        | dang-ky-hoat-dong-noi-tru#2 | Không
+Q4   | tra-cuu-thong-tin-bhyt     | 0        | 0        | dang-ky-ktx-tan-sinh-vien#0 | Không
+Q5   | dang-ky-hoat-dong-noi-tru  | 0        | 0        | dang-ky-ktx-tan-sinh-vien#6 | Không
+--> TỔNG ĐIỂM FixedSize   : Naive = 1/10 điểm  |  Strict = 0/10 điểm
+
+>>> CHIẾN LƯỢC: Sentence
+Câu  | Target Doc                 | Naive    | Strict   | Top-1 Chunk ID             | Match Content?
+-------------------------------------------------------------------------------------
+Q1   | huong-dan-tra-phong-ktx    | 0        | 0        | dang-ky-ktx-tan-sinh-vien#5 | Không
+Q2   | dang-ky-ktx-tan-sinh-vien  | 2        | 0        | dang-ky-ktx-tan-sinh-vien#2 | Không
+Q3   | huong-dan-tra-phong-ktx    | 1        | 0        | dang-ky-ktx-tan-sinh-vien#4 | Không
+Q4   | tra-cuu-thong-tin-bhyt     | 0        | 0        | dang-ky-ktx-tan-sinh-vien#30 | Không
+Q5   | dang-ky-hoat-dong-noi-tru  | 0        | 0        | dang-ky-ktx-tan-sinh-vien#25 | Không
+--> TỔNG ĐIỂM Sentence    : Naive = 3/10 điểm  |  Strict = 0/10 điểm
+
+>>> CHIẾN LƯỢC: Recursive
+Câu  | Target Doc                 | Naive    | Strict   | Top-1 Chunk ID             | Match Content?
+-------------------------------------------------------------------------------------
+Q1   | huong-dan-tra-phong-ktx    | 2        | 2        | huong-dan-tra-phong-ktx#1  | Có (Top-1)
+Q2   | dang-ky-ktx-tan-sinh-vien  | 2        | 0        | dang-ky-ktx-tan-sinh-vien#2 | Không
+Q3   | huong-dan-tra-phong-ktx    | 1        | 0        | dang-ky-ktx-tan-sinh-vien#11 | Không
+Q4   | tra-cuu-thong-tin-bhyt     | 0        | 0        | dang-ky-ktx-tan-sinh-vien#8 | Không
+Q5   | dang-ky-hoat-dong-noi-tru  | 0        | 0        | tra-cuu-thong-tin-bhyt#2   | Không
+--> TỔNG ĐIỂM Recursive   : Naive = 5/10 điểm  |  Strict = 2/10 điểm
+
+>>> CHIẾN LƯỢC: Heading
+Câu  | Target Doc                 | Naive    | Strict   | Top-1 Chunk ID             | Match Content?
+-------------------------------------------------------------------------------------
+Q1   | huong-dan-tra-phong-ktx    | 2        | 0        | huong-dan-tra-phong-ktx#15 | Không
+Q2   | dang-ky-ktx-tan-sinh-vien  | 2        | 0        | dang-ky-ktx-tan-sinh-vien#14 | Không
+Q3   | huong-dan-tra-phong-ktx    | 2        | 0        | huong-dan-tra-phong-ktx#9  | Không
+Q4   | tra-cuu-thong-tin-bhyt     | 0        | 0        | dang-ky-ktx-tan-sinh-vien#15 | Không
+Q5   | dang-ky-hoat-dong-noi-tru  | 0        | 0        | dang-ky-ktx-tan-sinh-vien#0 | Không
+--> TỔNG ĐIỂM Heading     : Naive = 6/10 điểm  |  Strict = 0/10 điểm
+
+-------------------------------------------------------------------------------------
+BẢNG TỔNG KẾT ĐIỂM CHẤM 2 MỨC:
+Chiến lược      | Điểm Naive (/10)   | Điểm Strict (/10)  | Chênh lệch (Thổi phồng)
+-------------------------------------------------------------------------------------
+FixedSize       | 1                  | 0                  | +1 điểm (10%)
+Sentence        | 3                  | 0                  | +3 điểm (30%)
+Recursive       | 5                  | 2                  | +3 điểm (30%)
+Heading         | 6                  | 0                  | +6 điểm (60%)
+
+[NHẬN XÉT PHÁT HIỆN]:
+  - Cách chấm ngây thơ (Naive) thổi phồng kết quả từ +10% đến +60%!
+  - Điển hình ở HeadingChunker: Naive đạt 6/10đ nhưng Strict là 0/10đ. Ba vị trí top-3 bị chiếm
+    bởi các chunk thuộc cùng tài liệu nhưng sai section (ví dụ hỏi kích thước ảnh 4x6 nhưng top-3
+    lại lấy chunk Bước 5 Tải ảnh CCCD, Bước 3 Chọn khu ở, Bước 6 Điền biểu mẫu).
+
+=====================================================================================
+[PHẦN 3] THỰC NGHIỆM A/B TESTING BẮT BUỘC: METADATA FILTER
+Truy vấn: 'Thời gian ở nội trú bao lâu thì bắt buộc phải hoàn thành khảo sát trước khi gửi yêu cầu trả phòng?'
+Target Doc: huong-dan-tra-phong-ktx (audience: student)
+-------------------------------------------------------------------------------------
+
+>>> Chiến lược: FixedSize
+   [KHÔNG DÙNG FILTER]:
+      Top-1: dang-ky-ktx-tan-sinh-vien#20 (score=0.3740, aud=student) -> D (D02, D03, D04, D05, D06)    - Địa chỉ: Tầng trệt nhà D03  - Số...
+      Top-2: dang-ky-ktx-tan-sinh-vien#6 (score=0.2911, aud=student) -> các giấy tờ minh chứng tương ứng. Gồm có:     1. Đơn đề nghị miễn...
+      Top-3: tra-cuu-thong-tin-bhyt#2   (score=0.2576, aud=all) -> thời hạn sử dụng thẻ BHYT để đảm bảo quyền lợi khám chữa bệnh khô...
+   [CÓ DÙNG FILTER (audience: student)]:
+      Top-1: dang-ky-ktx-tan-sinh-vien#20 (score=0.3740, aud=student) -> D (D02, D03, D04, D05, D06)    - Địa chỉ: Tầng trệt nhà D03  - Số...
+      Top-2: dang-ky-ktx-tan-sinh-vien#6 (score=0.2911, aud=student) -> các giấy tờ minh chứng tương ứng. Gồm có:     1. Đơn đề nghị miễn...
+      Top-3: dang-ky-ktx-tan-sinh-vien#12 (score=0.2503, aud=student) -> à thử lại.       Khi tải ảnh thành công, hệ thống sẽ tự động tríc...
+   => KẾT QUẢ THAY ĐỔI RÕ RỆT: Filter đã loại bỏ chunk ngoại lai!
+
+>>> Chiến lược: Sentence
+   [KHÔNG DÙNG FILTER]:
+      Top-1: tra-cuu-thong-tin-bhyt#1   (score=0.3921, aud=all) -> Mở trang tra cứu               2   Tra cứu thông tin trên ứng dụn...
+      Top-2: dang-ky-ktx-tan-sinh-vien#5 (score=0.1781, aud=student) -> Phông nền: Màu trắng hoặc màu xanh. Định dạng & nguồn ảnh: File ....
+      Top-3: dang-ky-ktx-tan-sinh-vien#13 (score=0.1740, aud=student) -> Các phòng còn chỗ trống sẽ được hiển thị kèm số chỗ còn lại. Ví d...
+   [CÓ DÙNG FILTER (audience: student)]:
+      Top-1: dang-ky-ktx-tan-sinh-vien#5 (score=0.1781, aud=student) -> Phông nền: Màu trắng hoặc màu xanh. Định dạng & nguồn ảnh: File ....
+      Top-2: dang-ky-ktx-tan-sinh-vien#13 (score=0.1740, aud=student) -> Các phòng còn chỗ trống sẽ được hiển thị kèm số chỗ còn lại. Ví d...
+      Top-3: dang-ky-ktx-tan-sinh-vien#19 (score=0.1728, aud=student) -> Hệ thống sẽ gửi mã đăng ký về email sinh viên đã khai báo. Mở hộp...
+   => KẾT QUẢ THAY ĐỔI RÕ RỆT: Filter đã loại bỏ chunk ngoại lai!
+
+>>> Chiến lược: Recursive
+   [KHÔNG DÙNG FILTER]:
+      Top-1: huong-dan-tra-phong-ktx#1  (score=0.2705, aud=student) -> Sinh viên đã ở nội trú từ 5 tháng trở lên phải hoàn thành khảo sá...
+      Top-2: dang-ky-ktx-tan-sinh-vien#4 (score=0.2586, aud=student) -> Tỉ lệ ảnh: 4 x 6, khuôn mặt chiếm khoảng 75% diện tích ảnh.  Vị t...
+      Top-3: khao-sat-sinh-vien-noi-tru#0 (score=0.1988, aud=student) -> # Huong dan thuc hien khao sat sinh vien noi tru Ky tuc xa  Hướng...
+   [CÓ DÙNG FILTER (audience: student)]:
+      Top-1: huong-dan-tra-phong-ktx#1  (score=0.2705, aud=student) -> Sinh viên đã ở nội trú từ 5 tháng trở lên phải hoàn thành khảo sá...
+      Top-2: dang-ky-ktx-tan-sinh-vien#4 (score=0.2586, aud=student) -> Tỉ lệ ảnh: 4 x 6, khuôn mặt chiếm khoảng 75% diện tích ảnh.  Vị t...
+      Top-3: khao-sat-sinh-vien-noi-tru#0 (score=0.1988, aud=student) -> # Huong dan thuc hien khao sat sinh vien noi tru Ky tuc xa  Hướng...
+   => Top-3 không đổi do cả 3 chunk hàng đầu ban đầu đều thuộc audience: student.
+
+>>> Chiến lược: Heading
+   [KHÔNG DÙNG FILTER]:
+      Top-1: huong-dan-tra-phong-ktx#15 (score=0.1779, aud=student) -> Bước 10 Khai báo tài khoản ngân hàng và ngày trả phòng    Khai bá...
+      Top-2: khao-sat-sinh-vien-noi-tru#1 (score=0.1777, aud=student) -> HƯỚNG DẪN THỰC HIỆN KHẢO SÁT  Sinh viên truy cập link: https://kh...
+      Top-3: huong-dan-tra-phong-ktx#11 (score=0.1318, aud=student) -> Bước 7 Mở phiếu khảo sát    Sau khi đăng nhập, hệ thống tự chuyển...
+   [CÓ DÙNG FILTER (audience: student)]:
+      Top-1: huong-dan-tra-phong-ktx#15 (score=0.1779, aud=student) -> Bước 10 Khai báo tài khoản ngân hàng và ngày trả phòng    Khai bá...
+      Top-2: khao-sat-sinh-vien-noi-tru#1 (score=0.1777, aud=student) -> HƯỚNG DẪN THỰC HIỆN KHẢO SÁT  Sinh viên truy cập link: https://kh...
+      Top-3: huong-dan-tra-phong-ktx#11 (score=0.1318, aud=student) -> Bước 7 Mở phiếu khảo sát    Sau khi đăng nhập, hệ thống tự chuyển...
+   => Top-3 không đổi do cả 3 chunk hàng đầu ban đầu đều thuộc audience: student.
+
+[KẾT LUẬN A/B FILTER]:
+  - Ở SentenceChunker: Không có filter, tài liệu đối tượng chung 'tra-cuu-thong-tin-bhyt#1' (audience: all)
+    chiếm ngay vị trí Top-1 với điểm số 0.3921. Khi bật filter, chunk này bị loại bỏ hoàn toàn,
+    nhường chỗ cho tài liệu nội trú của sinh viên.
+  - Ở FixedSizeChunker: Không có filter, 'tra-cuu-thong-tin-bhyt#2' lọt vào Top-3. Bật filter loại bỏ ngay.
+  - Kết luận: Metadata Filter đóng vai trò cực kỳ quan trọng trong việc chặn nhiễu từ các văn bản
+    thuộc miền đối tượng khác, cải thiện đáng kể độ chính xác ngữ cảnh trước khi đưa vào LLM.
+
+=====================================================================================
+[PHẦN 4] PHÂN TÍCH LỖI THỰC TẾ (FAILURE CASE ANALYSIS)
+=====================================================================================
+FAILURE CASE 1: Top-3 lấy đúng tài liệu nhưng sai hoàn toàn section chứa câu trả lời
+  1. Câu hỏi bị hỏng:
+     - Query: 'Tân sinh viên đăng ký ở Ký túc xá cần chuẩn bị ảnh chân dung kích thước bao nhiêu và mới chụp trong thời gian bao lâu?'
+     - Target Doc: dang-ky-ktx-tan-sinh-vien
+     - Gold Fact cần tìm: 'Ảnh chân dung kích thước 4 x 6, mới chụp không quá 6 tháng'
+  2. Vì sao bị hỏng:
+     - Cả 3 kết quả Top-3 của HeadingChunker đều thuộc đúng tài liệu dang-ky-ktx-tan-sinh-vien:
+       + Top-1: dang-ky-ktx-tan-sinh-vien#14 ('[Bước 5 Tải lên ảnh Căn cước công dân]')
+       + Top-2: dang-ky-ktx-tan-sinh-vien#11 ('Bước 3 Chọn khu ở và loại phòng')
+       + Top-3: dang-ky-ktx-tan-sinh-vien#15 ('Bước 6 Điền thông tin cá nhân')
+     - Nguyên nhân gốc rễ:
+       a) MockEmbedder sử dụng MD5 hashing nên không hiểu ngữ nghĩa của 'kích thước ảnh chân dung',
+          dẫn đến các từ lặp lại như 'ảnh', 'sinh viên' bị hash trùng ngẫu nhiên với chunk tải ảnh CCCD.
+       b) Chunker chia theo section mà không có overlap: Thông tin về ảnh chân dung 4x6 chỉ nằm độc nhất
+          trong chunk #4 (mục 'Chuẩn bị trước khi bắt đầu'). Khi chunk #4 bị điểm thấp hơn các chunk
+          hướng dẫn upload ảnh CCCD, hệ thống mất hoàn toàn cơ hội đưa câu trả lời vào top-3.
+       c) Hiện tượng lấn át: Các section trong cùng một tài liệu có phong cách văn bản tương tự nhau,
+          khiến điểm số rất sát sao và việc section nào lọt top-3 gần như ngẫu nhiên nếu không có semantic dense.
+  3. Đề xuất sửa:
+     - Bước 1: Thay MockEmbedder bằng mô hình Embedding ngữ nghĩa thực tế (Sentence-Transformers đa ngữ
+       như paraphrase-multilingual-MiniLM-L12-v2 hoặc Google Gemini embedding-001).
+     - Bước 2: Bổ sung cơ chế Hybrid Search (kết hợp BM25 cho từ khóa chính xác '4x6', '4 x 6' với Dense Cosine).
+     - Bước 3: Áp dụng Metadata Enrichment / Heading Hierarchy: Gắn metadata mục lục 'Mục: Chuẩn bị hồ sơ'
+       vào từng chunk để retriever nhận biết được phạm vi thông tin.
+
+-------------------------------------------------------------------------------------
+FAILURE CASE 2: Nhiễu tài liệu đối tượng chung lọt vào Top-1 khi thiếu filter
+  1. Câu hỏi bị hỏng:
+     - Query: 'Thời gian ở nội trú bao lâu thì bắt buộc phải hoàn thành khảo sát trước khi gửi yêu cầu trả phòng?'
+     - Chiến lược bị ảnh hưởng: SentenceChunker khi KHÔNG dùng metadata_filter.
+  2. Vì sao bị hỏng:
+     - Chunk tra-cuu-thong-tin-bhyt#1 (nói về thẻ BHYT, audience: all) đạt điểm cosine 0.3921,
+       vượt xa tất cả các chunk thuộc huong-dan-tra-phong-ktx (điểm < 0.20).
+     - Do câu hỏi chứa các từ chung chung, mô hình nhúng bị nhiễu bởi các đoạn văn ngắn của tài liệu BHYT.
+  3. Đề xuất sửa:
+     - Bắt buộc áp dụng Pre-filtering theo trường metadata={'audience': 'student'} để gạt bỏ các tài liệu
+       không thuộc đối tượng sinh viên nội trú ngay trước giai đoạn tính độ tương tự.
+
+=====================================================================================
+HOÀN TẤT THỰC NGHIỆM CHECKPOINT 6
+=====================================================================================
